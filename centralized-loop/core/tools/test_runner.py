@@ -40,7 +40,12 @@ class TestRunnerTool(BaseTool):
 
         path: str = input_data["path"]
         timeout: float = float(input_data.get("timeout", 60))
-        extra_args: list[str] = input_data.get("extra_args", [])
+        extra_args = input_data.get("extra_args", [])
+
+        if not isinstance(extra_args, list):
+            return ToolResult(success=False, error="extra_args must be a list of strings")
+        if not all(isinstance(a, str) for a in extra_args):
+            return ToolResult(success=False, error="Each element of extra_args must be a string")
 
         cmd = [sys.executable, "-m", "pytest", path, "-v", "--tb=short"] + extra_args
         try:

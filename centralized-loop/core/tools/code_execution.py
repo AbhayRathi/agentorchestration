@@ -38,7 +38,12 @@ class CodeExecutionTool(BaseTool):
             return ToolResult(success=False, error="; ".join(errors))
 
         code: str = input_data["code"]
-        timeout: float = float(input_data.get("timeout", 30))
+        try:
+            timeout: float = float(input_data.get("timeout", 30))
+        except (TypeError, ValueError):
+            return ToolResult(success=False, error="timeout must be a positive number")
+        if timeout <= 0:
+            return ToolResult(success=False, error="timeout must be a positive number")
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
