@@ -38,6 +38,12 @@ class FileWriteTool(BaseTool):
         content: str = input_data["content"]
         mode: str = input_data.get("mode", "w")
 
+        if mode not in {"w", "a"}:
+            return ToolResult(
+                success=False,
+                error=f"Invalid mode {mode!r}: must be 'w' (overwrite) or 'a' (append)",
+            )
+
         try:
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
             with open(path, mode, encoding="utf-8") as fh:

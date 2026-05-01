@@ -247,7 +247,15 @@ class TestAgent(BaseAgent):
             )
 
         # sub_phase == _RUN
-        test_path = state["test_path"]
+        test_path = state.get("test_path")
+        if not test_path:
+            # test_path should have been set in the _WRITE sub-phase;
+            # if it's missing the state is corrupt – reset and retry.
+            state["test_sub_phase"] = self._WRITE
+            return Action(
+                type="fail",
+                message="TestAgent: test_path not found in state; workflow state is corrupt",
+            )
         last_result = state.get("last_tool_result", {})
 
         # Check if we just finished running tests
@@ -307,10 +315,15 @@ class ReviewAgent(BaseAgent):
         review_done = state.get("review_done", False)
 
         if not review_done:
+            if not code_path:
+                return Action(
+                    type="fail",
+                    message="ReviewAgent: code_path not set in state; cannot review",
+                )
             # Read the code for review
             state["review_done"] = True
             return Action(
-                type="tool_call",
+
                 tool_name="read_file",
                 tool_input={"path": code_path},
                 message="Reading code for review",
