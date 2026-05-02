@@ -7,6 +7,6 @@ dist/
 build/
 .env
 *.jsonl
-eval_results/
-memory/
+/eval_results/
+/memory/
 /tmp/
