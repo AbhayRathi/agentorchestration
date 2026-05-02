@@ -174,16 +174,18 @@ class CodeAgent(BaseAgent):
         code = self._generate_code(task.goal, state)
         code_path = os.path.join(self.output_dir, "stack.py")
 
-        # After writing the code, signal the engine to move to the test phase.
-        state["phase"] = "test"
-        state["code_path"] = code_path
-        state["iteration"] = iteration + 1
-
         return Action(
             type="tool_call",
             tool_name="write_file",
             tool_input={"path": code_path, "content": code},
             message=f"Writing code (iteration {iteration + 1})",
+            metadata={
+                "next_phase": "test",
+                "state_updates": {
+                    "code_path": code_path,
+                    "iteration": iteration + 1,
+                },
+            },
         )
 
     def _generate_code(self, goal: str, state: dict[str, Any]) -> str:
@@ -236,14 +238,18 @@ class TestAgent(BaseAgent):
 
         if sub_phase == self._WRITE:
             test_path = os.path.join(self.output_dir, "test_stack.py")
-            state["test_path"] = test_path
-            state["test_sub_phase"] = self._RUN
 
             return Action(
                 type="tool_call",
                 tool_name="write_file",
                 tool_input={"path": test_path, "content": _STACK_TESTS},
                 message="Writing test file",
+                metadata={
+                    "state_updates": {
+                        "test_path": test_path,
+                        "test_sub_phase": self._RUN,
+                    }
+                },
             )
 
         # sub_phase == _RUN
@@ -253,26 +259,29 @@ class TestAgent(BaseAgent):
         # Check if we just finished running tests
         if state.get("tests_ran"):
             success = last_result.get("success", False)
-            if success:
-                state["phase"] = "review"
-            else:
-                state["phase"] = "fix"
-                state["test_results"] = last_result.get("output", "")
-                state["test_sub_phase"] = self._WRITE  # reset for next iteration
-            state["tests_ran"] = False
             # Yield control to next agent by returning a message
             return Action(
                 type="message",
                 message="Tests complete" if success else "Tests failed – handing off to CodeAgent for a fix",
+                metadata={
+                    "next_phase": "review" if success else "fix",
+                    "state_updates": {
+                        "tests_ran": False,
+                        "test_sub_phase": self._RUN if success else self._WRITE,
+                        "test_results": last_result.get("output", "")
+                        if not success
+                        else "",
+                    },
+                },
             )
 
         # First time in _RUN sub-phase: trigger the test runner
-        state["tests_ran"] = True
         return Action(
             type="tool_call",
             tool_name="run_tests",
-            tool_input={"path": test_path},
+            tool_input={"path": test_path, "cwd": self.output_dir},
             message="Running tests",
+            metadata={"state_updates": {"tests_ran": True}},
         )
 
 
@@ -307,13 +316,12 @@ class ReviewAgent(BaseAgent):
         review_done = state.get("review_done", False)
 
         if not review_done:
-            # Read the code for review
-            state["review_done"] = True
             return Action(
                 type="tool_call",
                 tool_name="read_file",
                 tool_input={"path": code_path},
                 message="Reading code for review",
+                metadata={"state_updates": {"review_done": True}},
             )
 
         # Review complete – signal done

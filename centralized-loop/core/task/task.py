@@ -30,6 +30,7 @@ class Action:
     tool_input: Optional[dict[str, Any]] = None
     message: Optional[str] = None
     requires_approval: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,6 +39,7 @@ class Action:
             "tool_input": self.tool_input,
             "message": self.message,
             "requires_approval": self.requires_approval,
+            "metadata": self.metadata,
         }
 
 

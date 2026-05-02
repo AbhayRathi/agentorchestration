@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import os
-import tempfile
+from io import StringIO
+from contextlib import redirect_stdout
 
 import pytest
 
 from core.engine.execution_engine import ExecutionEngine
-from core.policy.approval import ApprovalMode, ApprovalPolicy
+from core.policy.approval import ApprovalConfig, ApprovalMode
 from core.task.task import Task, TaskStatus
 from core.tools.file_tool import FileReadTool, FileWriteTool
 from core.tools.test_runner import TestRunnerTool
 from examples.coding_workflow.agents import CodeAgent, ReviewAgent, TestAgent
+from examples.coding_workflow.run import run_coding_workflow
 
 
 @pytest.fixture()
@@ -29,7 +31,7 @@ def coding_engine(output_dir):
             ReviewAgent(),
         ],
         tools=[FileWriteTool(), FileReadTool(), TestRunnerTool()],
-        approval_policy=ApprovalPolicy(mode=ApprovalMode.AUTO_APPROVE),
+        approval_config=ApprovalConfig(default_mode=ApprovalMode.AUTO_APPROVE),
     )
 
 
@@ -92,6 +94,7 @@ class TestCodingWorkflowIndividualAgents:
         assert action.type == "tool_call"
         assert action.tool_name == "write_file"
         assert "stack.py" in action.tool_input["path"]
+        assert action.metadata["next_phase"] == "test"
 
     def test_code_agent_does_not_act_in_review_phase(self, output_dir):
         from examples.coding_workflow.agents import CodeAgent
@@ -108,3 +111,36 @@ class TestCodingWorkflowIndividualAgents:
         task = Task(goal="Implement a stack")
         state = {"phase": "review", "code_path": "/tmp/stack.py"}
         assert agent.can_act(task, state)
+
+    def test_test_agent_run_action_sets_cwd(self, output_dir):
+        agent = TestAgent(output_dir=output_dir)
+        task = Task(goal="Implement a stack")
+        state = {
+            "phase": "test",
+            "test_sub_phase": agent._RUN,
+            "test_path": os.path.join(output_dir, "test_stack.py"),
+        }
+        action = agent.act(task, state)
+        assert action.tool_input["cwd"] == output_dir
+
+
+class TestCodingWorkflowRun:
+    def test_preserves_artifacts_on_failure(self, monkeypatch, tmp_path):
+        class _BrokenEngine:
+            def run(self, task, state=None):
+                raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            "examples.coding_workflow.run.build_engine",
+            lambda output_dir: _BrokenEngine(),
+        )
+        stdout = StringIO()
+        with pytest.raises(RuntimeError), redirect_stdout(stdout):
+            run_coding_workflow(debug=False)
+        assert "[debug] artifacts preserved at:" in stdout.getvalue()
+
+    def test_debug_preserves_artifacts_on_success(self, tmp_path):
+        stdout = StringIO()
+        with redirect_stdout(stdout):
+            task = run_coding_workflow(output_dir=str(tmp_path), debug=True)
+        assert task.status == TaskStatus.COMPLETED

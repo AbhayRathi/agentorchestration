@@ -41,8 +41,9 @@ class _JsonFormatter(logging.Formatter):
 class StructuredLogger:
     """Thin wrapper that adds structured keyword arguments to log calls."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, stacklevel: int = 2) -> None:
         self._logger = logging.getLogger(name)
+        self._stacklevel = stacklevel
 
     def _log(self, level: int, event: str, **kwargs: Any) -> None:
         if self._logger.isEnabledFor(level):
@@ -51,7 +52,12 @@ class StructuredLogger:
                 (f"_{k}" if k in _LOGRECORD_RESERVED else k): v
                 for k, v in kwargs.items()
             }
-            self._logger.log(level, event, extra=safe_kwargs, stacklevel=3)
+            self._logger.log(
+                level,
+                event,
+                extra=safe_kwargs,
+                stacklevel=self._stacklevel,
+            )
 
     def debug(self, event: str, **kwargs: Any) -> None:
         self._log(logging.DEBUG, event, **kwargs)

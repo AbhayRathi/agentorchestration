@@ -37,8 +37,8 @@ from core.evals.evaluator import (
     task_completed_criterion,
 )
 from core.logging.logger import configure_logging, get_logger
-from core.memory.memory import LongTermMemory, ShortTermMemory
-from core.policy.approval import ApprovalMode, ApprovalPolicy
+from core.memory.memory import LongTermMemory
+from core.policy.approval import ApprovalConfig, ApprovalMode
 from core.task.task import Task
 from core.tools.file_tool import FileReadTool, FileWriteTool
 from core.tools.test_runner import TestRunnerTool
@@ -53,16 +53,16 @@ def build_engine(output_dir: str) -> ExecutionEngine:
 
     # The code-execution tool requires human approval; for this demo
     # we use AUTO_APPROVE so the workflow runs unattended.
-    approval_policy = ApprovalPolicy(mode=ApprovalMode.AUTO_APPROVE)
-
     return ExecutionEngine(
         agents=[code_agent, test_agent, review_agent],
         tools=[FileWriteTool(), FileReadTool(), TestRunnerTool()],
-        approval_policy=approval_policy,
+        approval_config=ApprovalConfig(default_mode=ApprovalMode.AUTO_APPROVE),
     )
 
 
-def run_coding_workflow(output_dir: str | None = None) -> Task:
+def run_coding_workflow(
+    output_dir: str | None = None, debug: bool = False
+) -> Task:
     configure_logging(level="INFO")
     logger = get_logger("coding_workflow")
 
@@ -74,6 +74,7 @@ def run_coding_workflow(output_dir: str | None = None) -> Task:
     else:
         _tmpdir_ctx = None  # type: ignore[assignment]
 
+    success = False
     try:
         task = Task(
             goal="Implement a stack data structure in Python",
@@ -121,10 +122,13 @@ def run_coding_workflow(output_dir: str | None = None) -> Task:
             tags=["coding", "stack"],
         )
 
+        success = True
         return task
     finally:
-        if _tmpdir_ctx is not None:
+        if _tmpdir_ctx is not None and success and not debug:
             _tmpdir_ctx.cleanup()
+        elif _tmpdir_ctx is not None:
+            print(f"[debug] artifacts preserved at: {_tmpdir_ctx.name}")
 
 
 def main() -> None:

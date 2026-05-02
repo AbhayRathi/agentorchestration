@@ -2,8 +2,6 @@
 
 import os
 
-import pytest
-
 from core.evals.evaluator import (
     EvalResult,
     Evaluator,
@@ -106,8 +104,9 @@ class TestEvaluator:
         evaluator = Evaluator(criteria=[], results_dir=str(tmp_path / "evals"))
         task = _make_completed_task()
         result = evaluator.evaluate(task)
-        # No criteria → score is 0/0 → 0 but overall_pass is True (vacuously)
+        assert result.overall_pass is False
         assert result.score == 0.0
+        assert result.reason == "No criteria defined"
 
     def test_persists_result(self, tmp_path):
         results_dir = str(tmp_path / "evals")
@@ -128,6 +127,21 @@ class TestEvaluator:
         result = evaluator.evaluate(task)
         assert result.overall_pass
 
+    def test_load_persisted_eval_result(self, tmp_path):
+        evaluator = Evaluator(
+            criteria=[task_completed_criterion()],
+            results_dir=str(tmp_path / "evals"),
+        )
+        task = _make_completed_task()
+        expected = evaluator.evaluate(task)
+        path = os.path.join(
+            evaluator.results_dir, f"{expected.task_id[:8]}_{expected.timestamp[:10]}.json"
+        )
+        loaded = Evaluator.load(path)
+        assert loaded.task_id == expected.task_id
+        assert loaded.reason == expected.reason
+        assert loaded.timestamp == expected.timestamp
+
 
 class TestEvalResult:
     def test_to_dict(self):
@@ -137,9 +151,25 @@ class TestEvalResult:
             criteria_results={"a": True, "b": False},
             overall_pass=False,
             score=0.5,
-            notes="1/2 passed",
+            reason="1/2 passed",
         )
         d = result.to_dict()
         assert d["task_id"] == "abc"
         assert d["score"] == 0.5
         assert d["overall_pass"] is False
+
+    def test_from_dict(self):
+        loaded = EvalResult.from_dict(
+            {
+                "task_id": "abc",
+                "task_goal": "goal",
+                "criteria_results": {"ok": True},
+                "overall_pass": True,
+                "score": 1.0,
+                "reason": "all good",
+                "timestamp": "2026-01-01T00:00:00+00:00",
+            }
+        )
+        assert loaded.task_id == "abc"
+        assert loaded.reason == "all good"
+        assert loaded.timestamp == "2026-01-01T00:00:00+00:00"

@@ -23,6 +23,11 @@ class TestAction:
         assert d["type"] == "done"
         assert d["message"] == "All done"
 
+    def test_to_dict_includes_metadata(self):
+        action = Action(type="message", metadata={"next_phase": "test"})
+        d = action.to_dict()
+        assert d["metadata"] == {"next_phase": "test"}
+
 
 class TestStep:
     def test_to_dict(self):
@@ -92,6 +97,7 @@ class TestTask:
         assert restored.status == task.status
         assert restored.step_count() == 1
         assert restored.steps[0].agent_name == "Agent"
+        assert restored.steps[0].action.metadata == {}
 
     def test_from_dict_empty_steps(self):
         task = Task(goal="fresh task")

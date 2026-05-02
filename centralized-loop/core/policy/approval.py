@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 from core.task.task import Action, Task
 
@@ -12,6 +12,12 @@ class ApprovalMode(str, Enum):
     AUTO_APPROVE = "auto_approve"   # All actions approved without prompt
     AUTO_DENY = "auto_deny"         # All risky actions denied (safe default for CI)
     CLI_PROMPT = "cli_prompt"       # Ask on the terminal
+
+
+@dataclass
+class ApprovalConfig:
+    default_mode: ApprovalMode = ApprovalMode.CLI_PROMPT
+    per_tool_overrides: dict[str, ApprovalMode] = field(default_factory=dict)
 
 
 class ApprovalPolicy:
@@ -27,11 +33,9 @@ class ApprovalPolicy:
 
     def __init__(
         self,
-        mode: ApprovalMode = ApprovalMode.AUTO_APPROVE,
-        tool_overrides: dict[str, ApprovalMode] | None = None,
+        config: ApprovalConfig | None = None,
     ) -> None:
-        self.mode = mode
-        self._tool_overrides: dict[str, ApprovalMode] = tool_overrides or {}
+        self.config = config or ApprovalConfig()
 
     def approve(self, action: Action, task: Task | None = None) -> bool:
         """Return True if the action is approved to proceed.
@@ -43,8 +47,8 @@ class ApprovalPolicy:
         Returns:
             True → proceed, False → deny.
         """
-        effective_mode = self._tool_overrides.get(
-            action.tool_name or "", self.mode
+        effective_mode = self.config.per_tool_overrides.get(
+            action.tool_name or "", self.config.default_mode
         )
 
         if effective_mode == ApprovalMode.AUTO_APPROVE:

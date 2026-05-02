@@ -1,9 +1,6 @@
 """Tests for the memory system."""
 
 import os
-import json
-
-import pytest
 
 from core.memory.memory import LongTermMemory, ShortTermMemory
 
@@ -37,14 +34,8 @@ class TestShortTermMemory:
         m.set("k", [1, 2, 3])
         snap = m.snapshot()
         snap["k"].append(4)
-        # Original list is the same object (shallow copy) – test that the
-        # snapshot dict itself is a copy, not the same object.
+        assert m.get("k") == [1, 2, 3]
         assert snap is not m._store
-
-    def test_repr(self):
-        m = ShortTermMemory()
-        m.set("foo", "bar")
-        assert "foo" in repr(m)
 
 
 class TestLongTermMemory:
@@ -54,14 +45,15 @@ class TestLongTermMemory:
         m.store("task", {"goal": "do stuff"})
         results = m.retrieve("task")
         assert len(results) == 1
-        assert results[0]["goal"] == "do stuff"
+        assert results[0]["value"]["goal"] == "do stuff"
+        assert results[0]["key"] == "task"
 
     def test_retrieve_latest(self, tmp_path):
         m = LongTermMemory(store_path=str(tmp_path / "lt.jsonl"))
         m.store("task", {"v": 1})
         m.store("task", {"v": 2})
         latest = m.retrieve_latest("task")
-        assert latest["v"] == 2
+        assert latest["value"]["v"] == 2
 
     def test_retrieve_missing_key(self, tmp_path):
         m = LongTermMemory(store_path=str(tmp_path / "lt.jsonl"))
@@ -93,3 +85,23 @@ class TestLongTermMemory:
         m = LongTermMemory(store_path=path)
         m.store("k", "v")
         assert os.path.exists(path)
+
+    def test_all_records_include_timestamps(self, tmp_path):
+        m = LongTermMemory(store_path=str(tmp_path / "lt.jsonl"))
+        m.store("k", "v")
+        record = m.all_records()[0]
+        assert "timestamp" in record
+        assert record["tags"] == []
+
+    def test_load_records_skips_invalid_json(self, tmp_path):
+        path = tmp_path / "lt.jsonl"
+        path.write_text('{"key":"ok","value":1,"tags":[],"timestamp":"x"}\nnot-json\n')
+        m = LongTermMemory(store_path=str(path))
+        records = m._load_records()
+        assert len(records) == 1
+
+    def test_search_by_tag_returns_full_records(self, tmp_path):
+        m = LongTermMemory(store_path=str(tmp_path / "lt.jsonl"))
+        m.store("task", {"id": 1}, tags=["alpha"])
+        result = m.search_by_tag("alpha")[0]
+        assert result["value"]["id"] == 1

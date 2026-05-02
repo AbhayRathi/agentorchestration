@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 from core.agent.base_agent import BaseAgent
 from core.logging.logger import get_logger
-from core.policy.approval import ApprovalPolicy
-from core.task.task import Action, Step, Task, TaskStatus
+from core.policy.approval import ApprovalConfig, ApprovalPolicy
+from core.task.task import Action, Step, Task
 from core.tools.base_tool import BaseTool
 
 logger = get_logger(__name__)
+_DELETE_STATE = object()
 
 
 class ExecutionEngine:
@@ -33,13 +33,15 @@ class ExecutionEngine:
         self,
         agents: list[BaseAgent],
         tools: list[BaseTool],
-        approval_policy: ApprovalPolicy | None = None,
+        approval_config: ApprovalConfig | None = None,
         max_steps: int | None = None,
+        max_retries: int | None = None,
     ) -> None:
         self.agents = agents
         self._tools: dict[str, BaseTool] = {t.name: t for t in tools}
-        self.approval_policy = approval_policy or ApprovalPolicy()
+        self.approval_policy = ApprovalPolicy(approval_config)
         self._max_steps_override = max_steps
+        self._max_retries_override = max_retries
 
     # ------------------------------------------------------------------
     # Public API
@@ -55,8 +57,14 @@ class ExecutionEngine:
         Returns:
             The mutated Task with updated status and step history.
         """
-        state = state or {}
+        if state is None:
+            state = {}
         max_steps = self._max_steps_override or task.max_steps
+        max_retries = (
+            self._max_retries_override
+            if self._max_retries_override is not None
+            else task.max_retries
+        )
 
         task.mark_in_progress()
         logger.info(
@@ -72,20 +80,30 @@ class ExecutionEngine:
                 self._fail(task, "No eligible agent found for current state")
                 break
 
-            try:
-                action = agent.act(task, state)
-            except Exception as exc:
-                self._record_error(task, agent.name, exc)
-                if task.retry_count < task.max_retries:
-                    task.retry_count += 1
-                    logger.warning(
-                        "engine.retry",
-                        task_id=task.id,
-                        retry=task.retry_count,
-                        error=str(exc),
+            step_retries = 0
+            task.retry_count = 0
+            while True:
+                try:
+                    action = agent.act(task, state)
+                    break
+                except Exception as exc:
+                    step_retries += 1
+                    task.retry_count = step_retries
+                    self._record_error(task, agent.name, exc)
+                    if step_retries <= max_retries:
+                        logger.warning(
+                            "engine.retry",
+                            task_id=task.id,
+                            retry=step_retries,
+                            error=str(exc),
+                        )
+                        continue
+                    self._fail(
+                        task, f"Agent raised exception after retries: {exc}"
                     )
-                    continue
-                self._fail(task, f"Agent raised exception after retries: {exc}")
+                    break
+
+            if task.status.value == "failed":
                 break
 
             validation_errors = self._validate_action(action)
@@ -99,17 +117,20 @@ class ExecutionEngine:
 
             # Handle terminal actions first
             if action.type == "done":
+                self._apply_action_metadata(state, action)
                 self._record_step(task, agent.name, action)
                 task.mark_completed({"final_message": action.message or ""})
                 logger.info("engine.done", task_id=task.id)
                 break
 
             if action.type == "fail":
+                self._apply_action_metadata(state, action)
                 self._record_step(task, agent.name, action)
                 self._fail(task, action.message or "Agent signalled failure")
                 break
 
             if action.type == "message":
+                self._apply_action_metadata(state, action)
                 self._record_step(task, agent.name, action)
                 logger.info(
                     "engine.message",
@@ -124,6 +145,7 @@ class ExecutionEngine:
             if action.type == "tool_call":
                 tool_result = self._execute_tool(task, agent.name, action, state)
                 state["last_tool_result"] = tool_result.to_dict()
+                self._apply_action_metadata(state, action)
                 self._record_step(
                     task,
                     agent.name,
@@ -221,6 +243,19 @@ class ExecutionEngine:
             error=result.error,
         )
         return result
+
+    def _apply_action_metadata(
+        self, state: dict[str, Any], action: Action
+    ) -> None:
+        next_phase = action.metadata.get("next_phase")
+        if next_phase is not None:
+            state["phase"] = next_phase
+
+        for key, value in action.metadata.get("state_updates", {}).items():
+            if value is _DELETE_STATE:
+                state.pop(key, None)
+            else:
+                state[key] = value
 
     def _record_step(
         self,

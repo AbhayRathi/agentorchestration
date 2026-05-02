@@ -29,11 +29,17 @@ class TestRunnerTool(BaseTool):
                 "type": "array",
                 "description": "Additional pytest CLI arguments",
             },
+            "cwd": {
+                "type": "string",
+                "description": "Optional working directory to run pytest from",
+            },
         },
     }
     requires_approval = False
 
-    def execute(self, input_data: dict[str, Any]) -> ToolResult:
+    def execute(
+        self, input_data: dict[str, Any], cwd: str | None = None
+    ) -> ToolResult:
         errors = self.validate_input(input_data)
         if errors:
             return ToolResult(success=False, error="; ".join(errors))
@@ -41,6 +47,7 @@ class TestRunnerTool(BaseTool):
         path: str = input_data["path"]
         timeout: float = float(input_data.get("timeout", 60))
         extra_args: list[str] = input_data.get("extra_args", [])
+        cwd = input_data.get("cwd", cwd)
 
         cmd = [sys.executable, "-m", "pytest", path, "-v", "--tb=short"] + extra_args
         try:
@@ -49,6 +56,7 @@ class TestRunnerTool(BaseTool):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                cwd=cwd,
             )
         except subprocess.TimeoutExpired:
             return ToolResult(

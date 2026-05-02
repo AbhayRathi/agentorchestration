@@ -8,7 +8,7 @@ import pytest
 
 from core.agent.base_agent import BaseAgent
 from core.engine.execution_engine import ExecutionEngine
-from core.policy.approval import ApprovalMode, ApprovalPolicy
+from core.policy.approval import ApprovalConfig, ApprovalMode
 from core.task.task import Action, Task, TaskStatus
 from core.tools.base_tool import BaseTool, ToolResult
 
@@ -66,10 +66,10 @@ class _FailingAgent(BaseAgent):
 
 
 def _auto_approve_engine(agents, tools):
-    return ExecutionEngine(
+        return ExecutionEngine(
         agents=agents,
         tools=tools,
-        approval_policy=ApprovalPolicy(mode=ApprovalMode.AUTO_APPROVE),
+        approval_config=ApprovalConfig(default_mode=ApprovalMode.AUTO_APPROVE),
     )
 
 
@@ -151,12 +151,12 @@ class TestExecutionEngine:
         engine = ExecutionEngine(
             agents=[agent],
             tools=[],
-            approval_policy=ApprovalPolicy(mode=ApprovalMode.AUTO_APPROVE),
+            approval_config=ApprovalConfig(default_mode=ApprovalMode.AUTO_APPROVE),
         )
         task = Task(goal="test", max_retries=2)
         task = engine.run(task)
         assert task.status == TaskStatus.FAILED
-        assert task.retry_count > 0
+        assert task.retry_count == 3
 
     def test_no_eligible_agent_fails(self):
         class _NeverActAgent(BaseAgent):
@@ -178,7 +178,7 @@ class TestExecutionEngine:
         engine = ExecutionEngine(
             agents=[agent],
             tools=[_EchoTool()],
-            approval_policy=ApprovalPolicy(mode=ApprovalMode.AUTO_DENY),
+            approval_config=ApprovalConfig(default_mode=ApprovalMode.AUTO_DENY),
         )
         task = Task(goal="test")
         task = engine.run(task)
@@ -193,3 +193,64 @@ class TestExecutionEngine:
         task = Task(goal="test")
         task = engine.run(task)
         assert task.status == TaskStatus.FAILED
+
+    def test_tool_action_metadata_updates_state(self):
+        agent = _SequenceAgent(
+            [
+                Action(
+                    type="tool_call",
+                    tool_name="echo",
+                    tool_input={},
+                    metadata={
+                        "next_phase": "review",
+                        "state_updates": {"custom": "value"},
+                    },
+                ),
+                Action(type="done"),
+            ]
+        )
+        engine = _auto_approve_engine([agent], [_EchoTool()])
+        task = Task(goal="test")
+        state: dict[str, Any] = {}
+        engine.run(task, state)
+        assert state["phase"] == "review"
+        assert state["custom"] == "value"
+
+    def test_message_action_metadata_updates_state(self):
+        agent = _SequenceAgent(
+            [
+                Action(
+                    type="message",
+                    message="hi",
+                    metadata={"state_updates": {"flag": True}},
+                ),
+                Action(type="done"),
+            ]
+        )
+        engine = _auto_approve_engine([agent], [])
+        task = Task(goal="test")
+        state: dict[str, Any] = {}
+        engine.run(task, state)
+        assert state["flag"] is True
+
+    def test_retry_count_resets_per_step(self):
+        class _FailOnceAgent(BaseAgent):
+            def __init__(self) -> None:
+                super().__init__(name="fail-once", role="test")
+                self._calls = 0
+
+            def act(self, task: Task, state: dict[str, Any]) -> Action:
+                self._calls += 1
+                if self._calls == 1:
+                    raise RuntimeError("first failure")
+                return Action(type="done")
+
+        engine = ExecutionEngine(
+            agents=[_FailOnceAgent()],
+            tools=[],
+            approval_config=ApprovalConfig(default_mode=ApprovalMode.AUTO_APPROVE),
+        )
+        task = Task(goal="test", max_retries=2)
+        task = engine.run(task)
+        assert task.status == TaskStatus.COMPLETED
+        assert task.retry_count == 1

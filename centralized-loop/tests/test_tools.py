@@ -166,6 +166,21 @@ class TestTestRunnerTool:
         result = tool.execute({})
         assert not result.success
 
+    def test_runs_from_cwd(self, tmp_path):
+        package_dir = tmp_path / "pkg"
+        package_dir.mkdir()
+        (package_dir / "helper.py").write_text("VALUE = 7\n")
+        test_file = package_dir / "test_helper.py"
+        test_file.write_text(
+            "from helper import VALUE\n\n"
+            "def test_value():\n"
+            "    assert VALUE == 7\n"
+        )
+
+        tool = TestRunnerTool()
+        result = tool.execute({"path": str(test_file.name), "cwd": str(package_dir)})
+        assert result.success
+
 
 class TestParsePytestSummary:
     def test_parse_passed(self):

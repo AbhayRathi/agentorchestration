@@ -37,12 +37,12 @@ class EvalResult:
     """The outcome of evaluating a task against its success criteria."""
 
     task_id: str
-    task_goal: str
+    task_goal: str = ""
     criteria_results: dict[str, bool] = field(default_factory=dict)
     overall_pass: bool = False
     score: float = 0.0  # fraction of criteria that passed
-    notes: str = ""
-    evaluated_at: str = field(
+    reason: str = ""
+    timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
@@ -53,9 +53,29 @@ class EvalResult:
             "criteria_results": self.criteria_results,
             "overall_pass": self.overall_pass,
             "score": self.score,
-            "notes": self.notes,
-            "evaluated_at": self.evaluated_at,
+            "reason": self.reason,
+            "timestamp": self.timestamp,
         }
+
+    @property
+    def notes(self) -> str:
+        return self.reason
+
+    @property
+    def evaluated_at(self) -> str:
+        return self.timestamp
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EvalResult":
+        return cls(
+            task_id=data["task_id"],
+            task_goal=data.get("task_goal", ""),
+            overall_pass=data["overall_pass"],
+            score=data["score"],
+            criteria_results=data.get("criteria_results", {}),
+            reason=data.get("reason", data.get("notes", "")),
+            timestamp=data.get("timestamp", data.get("evaluated_at", "")),
+        )
 
 
 class Evaluator:
@@ -90,8 +110,14 @@ class Evaluator:
 
         passed = sum(criteria_results.values())
         total = len(criteria_results)
-        score = passed / total if total > 0 else 0.0
-        overall_pass = passed == total
+        if total == 0:
+            score = 0.0
+            overall_pass = False
+            reason = "No criteria defined"
+        else:
+            score = passed / total
+            overall_pass = passed == total
+            reason = f"{passed}/{total} criteria passed"
 
         result = EvalResult(
             task_id=task.id,
@@ -99,14 +125,19 @@ class Evaluator:
             criteria_results=criteria_results,
             overall_pass=overall_pass,
             score=score,
-            notes=f"{passed}/{total} criteria passed",
+            reason=reason,
         )
 
         self._persist(result)
         return result
 
+    @classmethod
+    def load(cls, path: str) -> EvalResult:
+        with open(path, "r", encoding="utf-8") as fh:
+            return EvalResult.from_dict(json.load(fh))
+
     def _persist(self, result: EvalResult) -> None:
-        filename = f"{result.task_id[:8]}_{result.evaluated_at[:10]}.json"
+        filename = f"{result.task_id[:8]}_{result.timestamp[:10]}.json"
         path = os.path.join(self.results_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(result.to_dict(), fh, indent=2)
