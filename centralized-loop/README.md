@@ -36,7 +36,7 @@ centralized-loop/
 |---|---|
 | Smallest system that works | ~700 lines of core code |
 | Clarity over abstraction | Concrete dataclasses, no metaclass magic |
-| Everything testable | 74 tests; no global mutable state |
+| Everything testable | 86 tests; no global mutable state |
 | Separate infra from domain | `core/` has zero domain knowledge |
 | Logs are first-class | Every step emits structured JSON |
 | Human approval for risky actions | `ApprovalPolicy` gates any tool |
@@ -246,7 +246,7 @@ Expected output (truncated):
 ```bash
 cd centralized-loop/
 python -m pytest tests/ -v
-# 74 passed in ~3s
+# 86 passed in ~3s
 ```
 
 ---
