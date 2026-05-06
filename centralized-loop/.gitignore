@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.env
+*.jsonl
+/eval_results/
+/memory/
+/tmp/
