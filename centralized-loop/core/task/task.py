@@ -46,9 +46,7 @@ class Step:
     agent_name: str
     action: Action
     tool_result: dict[str, Any] | None = None
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     success: bool = True
     error: str | None = None
     status: str = "succeeded"
@@ -81,12 +79,8 @@ class Task:
     max_steps: int = 20
     retry_count: int = 0
     max_retries: int = 3
-    created_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
-    updated_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def add_step(self, step: Step) -> None:

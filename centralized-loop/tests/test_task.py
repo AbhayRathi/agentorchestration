@@ -1,6 +1,5 @@
 """Tests for the Task system."""
 
-
 from core.task.task import Action, Step, Task, TaskStatus
 
 
