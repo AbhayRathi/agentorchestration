@@ -41,11 +41,8 @@ jobs:
       - name: Mypy
         run: python -m mypy .
 
-      - name: Pytest
-        run: python -m pytest tests/ -v --no-cov
-
-      - name: Coverage
-        run: python -m pytest
+      - name: Pytest + Coverage
+        run: python -m pytest tests/ -v
 
       - name: Deterministic mock coding workflow
         env:
