@@ -6,9 +6,10 @@ import copy
 import json
 import os
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any, Iterator
+from typing import Any
 
 portalocker: Any | None
 try:  # pragma: no cover - optional dependency
