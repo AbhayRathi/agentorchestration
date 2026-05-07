@@ -15,7 +15,9 @@ class FileWriteTool(BaseTool):
     """
 
     name = "write_file"
-    description = "Write text content to a file on disk, creating parent directories as needed."
+    description = (
+        "Write text content to a file on disk, creating parent directories as needed."
+    )
     input_schema = {
         "required": ["path", "content"],
         "properties": {
@@ -71,7 +73,7 @@ class FileReadTool(BaseTool):
 
         path: str = input_data["path"]
         try:
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 content = fh.read()
             return ToolResult(
                 success=True,

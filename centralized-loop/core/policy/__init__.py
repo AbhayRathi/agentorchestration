@@ -1,3 +1,3 @@
-from .approval import ApprovalPolicy, ApprovalMode
+from .approval import ApprovalConfig, ApprovalMode, ApprovalPolicy, default_safe_mode
 
-__all__ = ["ApprovalPolicy", "ApprovalMode"]
+__all__ = ["ApprovalConfig", "ApprovalMode", "ApprovalPolicy", "default_safe_mode"]

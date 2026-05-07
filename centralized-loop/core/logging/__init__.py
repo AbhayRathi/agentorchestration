@@ -1,3 +1,3 @@
-from .logger import StructuredLogger, get_logger
+from .logger import RunTrace, StructuredLogger, configure_logging, get_logger
 
-__all__ = ["StructuredLogger", "get_logger"]
+__all__ = ["RunTrace", "StructuredLogger", "configure_logging", "get_logger"]

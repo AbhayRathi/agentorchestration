@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class TaskStatus(str, Enum):
@@ -18,17 +18,12 @@ class TaskStatus(str, Enum):
 
 @dataclass
 class Action:
-    """A structured action returned by an agent.
+    """A structured action returned by an agent."""
 
-    Agents never execute tools directly – they return an Action describing
-    what should happen next.  The execution engine is responsible for
-    validating and executing it.
-    """
-
-    type: str  # "tool_call" | "message" | "done" | "fail"
-    tool_name: Optional[str] = None
-    tool_input: Optional[dict[str, Any]] = None
-    message: Optional[str] = None
+    type: str
+    tool_name: str | None = None
+    tool_input: dict[str, Any] | None = None
+    message: str | None = None
     requires_approval: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -50,12 +45,12 @@ class Step:
     step_number: int
     agent_name: str
     action: Action
-    tool_result: Optional[dict[str, Any]] = None
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    tool_result: dict[str, Any] | None = None
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
+    status: str = "succeeded"
+    duration_ms: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,15 +61,14 @@ class Step:
             "timestamp": self.timestamp,
             "success": self.success,
             "error": self.error,
+            "status": self.status,
+            "duration_ms": self.duration_ms,
         }
 
 
 @dataclass
 class Task:
-    """A unit of work managed by the Centralized Loop.
-
-    Fully serialisable to JSON so it can be persisted and replayed.
-    """
+    """A unit of work managed by the Centralized Loop."""
 
     goal: str
     input_data: dict[str, Any] = field(default_factory=dict)
@@ -85,33 +79,30 @@ class Task:
     max_steps: int = 20
     retry_count: int = 0
     max_retries: int = 3
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-    updated_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def add_step(self, step: Step) -> None:
         self.steps.append(step)
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(UTC).isoformat()
 
     def mark_in_progress(self) -> None:
         self.status = TaskStatus.IN_PROGRESS
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(UTC).isoformat()
 
     def mark_completed(self, output: dict[str, Any] | None = None) -> None:
         self.status = TaskStatus.COMPLETED
         if output:
             self.output_data.update(output)
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(UTC).isoformat()
 
-    def mark_failed(self, reason: str = "") -> None:
+    def mark_failed(self, reason: str = "", *, code: str = "task_failed") -> None:
         self.status = TaskStatus.FAILED
         if reason:
             self.output_data["failure_reason"] = reason
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+            self.output_data["failure"] = {"code": code, "message": reason}
+        self.updated_at = datetime.now(UTC).isoformat()
 
     def step_count(self) -> int:
         return len(self.steps)
@@ -143,6 +134,10 @@ class Task:
                 timestamp=s["timestamp"],
                 success=s["success"],
                 error=s.get("error"),
+                status=s.get(
+                    "status", "succeeded" if s.get("success", True) else "failed"
+                ),
+                duration_ms=s.get("duration_ms", 0),
             )
             for s in data.get("steps", [])
         ]
