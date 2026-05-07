@@ -1,1 +1,1 @@
-pytest
+# Runtime dependencies are intentionally minimal for deterministic offline usage.

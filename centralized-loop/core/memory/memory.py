@@ -7,18 +7,24 @@ import json
 import os
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Iterator
 
+portalocker: Any | None
 try:  # pragma: no cover - optional dependency
-    import portalocker  # type: ignore
+    import portalocker as _portalocker
 except ImportError:  # pragma: no cover - optional dependency
     portalocker = None
+else:  # pragma: no cover - optional dependency
+    portalocker = _portalocker
 
+fcntl: Any | None
 try:  # pragma: no cover - platform-specific fallback
-    import fcntl
+    import fcntl as _fcntl
 except ImportError:  # pragma: no cover - platform-specific fallback
     fcntl = None
+else:  # pragma: no cover - platform-specific fallback
+    fcntl = _fcntl
 
 
 class ShortTermMemory:
@@ -51,14 +57,12 @@ class LongTermMemory:
         self._write_lock = threading.Lock()
         os.makedirs(os.path.dirname(os.path.abspath(store_path)), exist_ok=True)
 
-    def store(
-        self, key: str, value: Any, tags: list[str] | None = None
-    ) -> None:
+    def store(self, key: str, value: Any, tags: list[str] | None = None) -> None:
         record = {
             "key": key,
             "value": value,
             "tags": tags or [],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         with self._write_lock:
             with self._locked_file("a") as fh:
@@ -110,13 +114,19 @@ class LongTermMemory:
     def _acquire_lock(self, file_handle: Any, mode: str) -> None:
         if portalocker is not None:  # pragma: no branch
             lock_mode = (
-                portalocker.LOCK_EX if any(flag in mode for flag in ("a", "w", "+")) else portalocker.LOCK_SH
+                portalocker.LOCK_EX
+                if any(flag in mode for flag in ("a", "w", "+"))
+                else portalocker.LOCK_SH
             )
             portalocker.lock(file_handle, lock_mode)
             return
 
         if fcntl is not None:
-            lock_mode = fcntl.LOCK_EX if any(flag in mode for flag in ("a", "w", "+")) else fcntl.LOCK_SH
+            lock_mode = (
+                fcntl.LOCK_EX
+                if any(flag in mode for flag in ("a", "w", "+"))
+                else fcntl.LOCK_SH
+            )
             fcntl.flock(file_handle.fileno(), lock_mode)
 
     def _release_lock(self, file_handle: Any) -> None:

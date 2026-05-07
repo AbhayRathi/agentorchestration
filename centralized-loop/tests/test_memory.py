@@ -53,6 +53,7 @@ class TestLongTermMemory:
         m.store("task", {"v": 1})
         m.store("task", {"v": 2})
         latest = m.retrieve_latest("task")
+        assert latest is not None
         assert latest["value"]["v"] == 2
 
     def test_retrieve_missing_key(self, tmp_path):

@@ -1,6 +1,5 @@
 """Tests for the Task system."""
 
-import pytest
 
 from core.task.task import Action, Step, Task, TaskStatus
 
@@ -86,7 +85,9 @@ class TestTask:
     def test_serialization_roundtrip(self):
         task = Task(goal="serialize me", input_data={"key": "value"})
         task.mark_in_progress()
-        action = Action(type="tool_call", tool_name="run_tests", tool_input={"path": "x"})
+        action = Action(
+            type="tool_call", tool_name="run_tests", tool_input={"path": "x"}
+        )
         task.add_step(Step(step_number=1, agent_name="Agent", action=action))
 
         d = task.to_dict()

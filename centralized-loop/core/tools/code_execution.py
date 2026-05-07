@@ -2,32 +2,30 @@
 
 from __future__ import annotations
 
-import subprocess
+import os
 import sys
 import tempfile
-import os
 from typing import Any
 
 from core.tools.base_tool import BaseTool, ToolResult
+from core.tools.process_utils import run_subprocess
 
 
 class CodeExecutionTool(BaseTool):
-    """Execute a snippet of Python code in an isolated subprocess.
-
-    The code is written to a temporary file and run with the current Python
-    interpreter.  stdout/stderr are captured and returned.
-
-    This tool requires human approval by default because arbitrary code
-    execution is a high-risk operation.
-    """
+    """Execute a snippet of Python code in an isolated subprocess."""
 
     name = "execute_code"
-    description = "Execute a Python code snippet in a subprocess and return stdout/stderr."
+    description = (
+        "Execute a Python code snippet in a subprocess and return stdout/stderr."
+    )
     input_schema = {
         "required": ["code"],
         "properties": {
             "code": {"type": "string", "description": "Python source code to execute"},
-            "timeout": {"type": "number", "description": "Timeout in seconds (default 30)"},
+            "timeout": {
+                "type": "number",
+                "description": "Timeout in seconds (default 30)",
+            },
         },
     }
     requires_approval = True
@@ -38,40 +36,16 @@ class CodeExecutionTool(BaseTool):
             return ToolResult(success=False, error="; ".join(errors))
 
         code: str = input_data["code"]
-        timeout: float = float(input_data.get("timeout", 30))
+        timeout = float(input_data.get("timeout", 30))
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
             tmp.write(code)
             tmp_path = tmp.name
 
         try:
-            result = subprocess.run(
-                [sys.executable, tmp_path],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            output = result.stdout
-            if result.returncode != 0:
-                return ToolResult(
-                    success=False,
-                    output=output,
-                    error=result.stderr,
-                    metadata={"returncode": result.returncode},
-                )
-            return ToolResult(
-                success=True,
-                output=output,
-                metadata={"returncode": result.returncode},
-            )
-        except subprocess.TimeoutExpired:
-            return ToolResult(
-                success=False,
-                error=f"Execution timed out after {timeout}s",
-            )
-        except Exception as exc:
-            return ToolResult(success=False, error=str(exc))
+            result = run_subprocess([sys.executable, tmp_path], timeout=timeout)
+            if not result.success:
+                result.error = result.metadata.get("stderr") or result.error
+            return result
         finally:
             os.unlink(tmp_path)

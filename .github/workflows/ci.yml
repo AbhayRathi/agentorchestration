@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    defaults:
+      run:
+        working-directory: centralized-loop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Ruff format check
+        run: python -m ruff format --check .
+
+      - name: Ruff lint
+        run: python -m ruff check .
+
+      - name: Mypy
+        run: python -m mypy .
+
+      - name: Pytest
+        run: python -m pytest tests/ -v --no-cov
+
+      - name: Coverage
+        run: python -m pytest
+
+      - name: Deterministic mock coding workflow
+        env:
+          MODEL_PROVIDER: mock
+          CENTRALIZED_LOOP_SAFE_MODE: "true"
+        run: python -m examples.coding_workflow.run
+
+      - name: Deterministic mock research workflow
+        env:
+          MODEL_PROVIDER: mock
+          CENTRALIZED_LOOP_SAFE_MODE: "true"
+        run: python -m examples.research_workflow.run
+
+      - name: Deterministic mock C++ workflow
+        env:
+          MODEL_PROVIDER: mock
+          CENTRALIZED_LOOP_SAFE_MODE: "true"
+        run: python -m examples.cpp_workflow.run
